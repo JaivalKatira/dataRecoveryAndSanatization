@@ -1,37 +1,78 @@
 #pragma once
+
 #include <string>
 #include <cstdint>
 
 namespace core::drive {
 
-    enum class BusType {
-        NVME,
-        SATA,
-        SCSI,
-        USB,
-        UNKNOWN
-    };
+enum class BusType {
+    NVME,
+    SATA,
+    SCSI,
+    USB,
+    UNKNOWN
+};
 
-    struct DriveInfo {
-        std::string devicePath;      // e.g., "/dev/sda" or "/dev/nvme0n1"
-        std::string model;
-        std::string serialNumber;
-        uint64_t capacityBytes;
-        uint32_t logicalSectorSize;
-        uint32_t physicalSectorSize;
-        bool isRotational;           // true for HDD, false for SSD/NVMe
-        BusType bus;
+enum class MediaType {
+    HDD,
+    SSD,
+    UNKNOWN
+};
 
-        // Helper to get a human-readable bus type
-        std::string getBusTypeString() const {
-            switch (bus) {
-                case BusType::NVME: return "NVMe";
-                case BusType::SATA: return "SATA";
-                case BusType::SCSI: return "SCSI";
-                case BusType::USB:  return "USB";
-                default:            return "Unknown";
-            }
+struct DriveInfo {
+    std::string devicePath;
+    std::string model;
+    std::string serialNumber;
+
+    uint64_t capacityBytes = 0;
+
+    uint32_t logicalSectorSize = 512;
+    uint32_t physicalSectorSize = 512;
+
+    bool isRotational = false;
+
+    BusType bus = BusType::UNKNOWN;
+    MediaType mediaType = MediaType::UNKNOWN;
+
+    // --------------------------------------------------------
+    // Bus type
+    // --------------------------------------------------------
+
+    std::string getBusTypeString() const {
+        switch (bus) {
+            case BusType::NVME:
+                return "NVMe";
+
+            case BusType::SATA:
+                return "SATA";
+
+            case BusType::SCSI:
+                return "SCSI";
+
+            case BusType::USB:
+                return "USB";
+
+            default:
+                return "Unknown";
         }
-    };
+    }
+
+    // --------------------------------------------------------
+    // Media type
+    // --------------------------------------------------------
+
+    std::string getMediaTypeString() const {
+        switch (mediaType) {
+            case MediaType::HDD:
+                return "HDD";
+
+            case MediaType::SSD:
+                return "SSD";
+
+            default:
+                return "Unknown";
+        }
+    }
+};
 
 } // namespace core::drive

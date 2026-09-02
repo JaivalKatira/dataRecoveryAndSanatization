@@ -1,5 +1,5 @@
 #pragma once
-#include "../drive/DriveInfo.h"
+#include "../device/DriveInfo.h"
 #include <memory>
 #include <string>
 

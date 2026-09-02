@@ -1,4 +1,5 @@
 #include "DriveManager.h"
+
 #include <filesystem>
 #include <fstream>
 #include <algorithm>
@@ -8,93 +9,293 @@ namespace fs = std::filesystem;
 
 namespace core::drive {
 
-    std::string DriveManager::readSysfsValue(const std::string& path) const {
+    std::string DriveManager::readSysfsValue(
+        const std::string& path
+    ) const {
+
         std::ifstream file(path);
         std::string value;
+
         if (file.is_open()) {
             std::getline(file, value);
-            // Trim trailing whitespace
-            value.erase(value.find_last_not_of(" \n\r\t") + 1);
+
+            // Trim trailing whitespace safely
+            const auto last = value.find_last_not_of(" \n\r\t");
+
+            if (last != std::string::npos) {
+                value.erase(last + 1);
+            } else {
+                value.clear();
+            }
         }
+
         return value;
     }
 
-    BusType DriveManager::determineBusType(const std::string& devName, const std::string& sysfsPath) const {
-        if (devName.find("nvme") != std::string::npos) {
+    BusType DriveManager::determineBusType(
+        const std::string& devName,
+        const std::string& sysfsPath
+    ) const {
+
+        // ----------------------------------------------------
+        // NVMe
+        // ----------------------------------------------------
+
+        if (devName.find("nvme") == 0) {
             return BusType::NVME;
-        } 
-        
-        // Check for USB by looking at the device symlink path in sysfs
-        std::error_code ec;
-        fs::path devPath(sysfsPath);
-        fs::path realPath = fs::read_symlink(devPath, ec);
-        if (!ec && realPath.string().find("usb") != std::string::npos) {
-            return BusType::USB;
         }
 
-        // Default Linux sdX block devices are typically SATA/SCSI
-        if (devName.find("sd") != std::string::npos) {
-            // For a highly accurate distinction between SATA and SCSI, you would query 
-            // the ATA pass-through ioctl or SCSI INQUIRY here. 
-            // We will default to SATA for standard sdX targets as a baseline.
-            return BusType::SATA; 
+        // ----------------------------------------------------
+        // USB
+        // ----------------------------------------------------
+
+        std::error_code ec;
+
+        fs::path devPath(sysfsPath);
+        fs::path realPath = fs::weakly_canonical(devPath, ec);
+
+        if (!ec) {
+            std::string path = realPath.string();
+
+            if (path.find("/usb") != std::string::npos ||
+                path.find("usb") != std::string::npos) {
+
+                return BusType::USB;
+            }
+        }
+
+        // ----------------------------------------------------
+        // SATA / SCSI
+        // ----------------------------------------------------
+
+        /*
+         * Linux exposes many SATA/SAS/SCSI disks as /dev/sdX.
+         *
+         * We currently classify standard sdX devices as SATA.
+         *
+         * This is a baseline only. Later we can use SCSI
+         * INQUIRY / ATA IDENTIFY to distinguish them accurately.
+         */
+
+        if (devName.find("sd") == 0) {
+            return BusType::SATA;
         }
 
         return BusType::UNKNOWN;
     }
 
     std::vector<DriveInfo> DriveManager::getAvailableDrives() {
+
         std::vector<DriveInfo> drives;
+
         const std::string sysBlockPath = "/sys/block";
 
         if (!fs::exists(sysBlockPath)) {
-            std::cerr << "Error: /sys/block does not exist. Are you running on Linux?" << std::endl;
+
+            std::cerr
+                << "Error: /sys/block does not exist. "
+                << "Are you running on Linux?\n";
+
             return drives;
         }
 
-        for (const auto& entry : fs::directory_iterator(sysBlockPath)) {
-            std::string devName = entry.path().filename().string();
+        // ----------------------------------------------------
+        // Scan /sys/block
+        // ----------------------------------------------------
 
-            // Filter out loopback devices, ramdisks, and optical drives
-            if (devName.find("loop") == 0 || 
-                devName.find("ram") == 0 || 
+        for (const auto& entry :
+             fs::directory_iterator(sysBlockPath)) {
+
+            std::string devName =
+                entry.path().filename().string();
+
+            // ------------------------------------------------
+            // Ignore virtual / optical devices
+            // ------------------------------------------------
+
+            if (devName.find("loop") == 0 ||
+                devName.find("ram") == 0 ||
                 devName.find("sr") == 0) {
+
                 continue;
             }
 
             DriveInfo info;
-            info.devicePath = "/dev/" + devName;
-            
-            std::string basePath = entry.path().string();
 
-            // Read model and serial number
-            info.model = readSysfsValue(basePath + "/device/model");
-            info.serialNumber = readSysfsValue(basePath + "/device/serial");
+            info.devicePath =
+                "/dev/" + devName;
 
-            // Handle NVMe specific paths where model/serial are often at the device root
-            if (devName.find("nvme") == 0 && info.model.empty()) {
-                info.model = readSysfsValue(basePath + "/device/device/model");
+            std::string basePath =
+                entry.path().string();
+
+            // ------------------------------------------------
+            // Model
+            // ------------------------------------------------
+
+            info.model =
+                readSysfsValue(
+                    basePath + "/device/model"
+                );
+
+            // ------------------------------------------------
+            // Serial
+            // ------------------------------------------------
+
+            info.serialNumber =
+                readSysfsValue(
+                    basePath + "/device/serial"
+                );
+
+            // ------------------------------------------------
+            // NVMe fallback paths
+            // ------------------------------------------------
+
+            if (devName.find("nvme") == 0 &&
+                info.model.empty()) {
+
+                info.model =
+                    readSysfsValue(
+                        basePath +
+                        "/device/device/model"
+                    );
             }
 
-            // Read logical sector size
-            std::string logicalSizeStr = readSysfsValue(basePath + "/queue/logical_block_size");
-            info.logicalSectorSize = logicalSizeStr.empty() ? 512 : std::stoul(logicalSizeStr);
+            // ------------------------------------------------
+            // Logical sector size
+            // ------------------------------------------------
 
-            // Read physical sector size
-            std::string physicalSizeStr = readSysfsValue(basePath + "/queue/physical_block_size");
-            info.physicalSectorSize = physicalSizeStr.empty() ? info.logicalSectorSize : std::stoul(physicalSizeStr);
+            std::string logicalSizeStr =
+                readSysfsValue(
+                    basePath +
+                    "/queue/logical_block_size"
+                );
 
-            // Read capacity (sysfs size is reported in 512-byte blocks, regardless of logical sector size)
-            std::string sizeBlocksStr = readSysfsValue(basePath + "/size");
-            uint64_t sizeBlocks = sizeBlocksStr.empty() ? 0 : std::stoull(sizeBlocksStr);
-            info.capacityBytes = sizeBlocks * 512;
+            if (!logicalSizeStr.empty()) {
 
-            // Check if drive is rotational (HDD) or solid state (SSD/NVMe)
-            std::string rotationalStr = readSysfsValue(basePath + "/queue/rotational");
-            info.isRotational = (rotationalStr == "1");
+                try {
+                    info.logicalSectorSize =
+                        static_cast<uint32_t>(
+                            std::stoul(logicalSizeStr)
+                        );
 
-            // Determine interface
-            info.bus = determineBusType(devName, basePath);
+                } catch (...) {
+
+                    info.logicalSectorSize = 512;
+                }
+
+            } else {
+
+                info.logicalSectorSize = 512;
+            }
+
+            // ------------------------------------------------
+            // Physical sector size
+            // ------------------------------------------------
+
+            std::string physicalSizeStr =
+                readSysfsValue(
+                    basePath +
+                    "/queue/physical_block_size"
+                );
+
+            if (!physicalSizeStr.empty()) {
+
+                try {
+                    info.physicalSectorSize =
+                        static_cast<uint32_t>(
+                            std::stoul(physicalSizeStr)
+                        );
+
+                } catch (...) {
+
+                    info.physicalSectorSize =
+                        info.logicalSectorSize;
+                }
+
+            } else {
+
+                info.physicalSectorSize =
+                    info.logicalSectorSize;
+            }
+
+            // ------------------------------------------------
+            // Capacity
+            // ------------------------------------------------
+
+            /*
+             * /sys/block/<device>/size is expressed in
+             * 512-byte sectors.
+             */
+
+            std::string sizeBlocksStr =
+                readSysfsValue(
+                    basePath + "/size"
+                );
+
+            uint64_t sizeBlocks = 0;
+
+            if (!sizeBlocksStr.empty()) {
+
+                try {
+
+                    sizeBlocks =
+                        std::stoull(sizeBlocksStr);
+
+                } catch (...) {
+
+                    sizeBlocks = 0;
+                }
+            }
+
+            info.capacityBytes =
+                sizeBlocks * 512ULL;
+
+            // ------------------------------------------------
+            // Rotational status
+            // ------------------------------------------------
+
+            std::string rotationalStr =
+                readSysfsValue(
+                    basePath +
+                    "/queue/rotational"
+                );
+
+            info.isRotational =
+                (rotationalStr == "1");
+
+            // ------------------------------------------------
+            // Media type
+            // ------------------------------------------------
+
+            if (rotationalStr == "1") {
+
+                info.mediaType =
+                    MediaType::HDD;
+
+            } else if (rotationalStr == "0") {
+
+                info.mediaType =
+                    MediaType::SSD;
+
+            } else {
+
+                info.mediaType =
+                    MediaType::UNKNOWN;
+            }
+
+            // ------------------------------------------------
+            // Bus type
+            // ------------------------------------------------
+
+            info.bus =
+                determineBusType(
+                    devName,
+                    basePath
+                );
+
+            // ------------------------------------------------
+            // Store drive
+            // ------------------------------------------------
 
             drives.push_back(info);
         }

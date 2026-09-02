@@ -4,6 +4,7 @@
 #include <fcntl.h>
 #include <unistd.h>
 #include <iostream>
+#include <cerrno>
 #include <cstring>
 #include <thread>
 #include <chrono>
@@ -135,9 +136,15 @@ namespace core::sanitization {
         // Note: O_RDWR | O_EXCL is a preliminary safeguard. 
         // A robust DriveManager must verify mounts, root partitions, and user auth before this is called.
         int fd = open(drive.devicePath.c_str(), O_RDWR | O_EXCL);
-        if (fd < 0) {
-            std::cerr << "  -> Failed to open device: " << drive.devicePath << "\n";
-            return false;
+        if(fd<0){
+        std::cerr<<"  -> Failed to open device: "<<drive.devicePath
+                <<" ("<<errno<<": "<<std::strerror(errno)<<")\n";
+
+        if(errno==EBUSY){
+        std::cerr<<"  -> Device is busy. A namespace or filesystem may be in use.\n";
+        }
+
+        return false;
         }
 
         // --- STEP 1: CAPABILITY DETECTION ---
