@@ -1,4 +1,4 @@
-# 🛡️ SIH SanitizerOS — Data Recovery & Sanitization
+# SIH SanitizerOS — Data Recovery & Sanitization
 
 > **A modular C++ storage forensics and secure data sanitization framework for identifying, acquiring, recovering, and securely sanitizing storage devices.**
 
@@ -55,9 +55,9 @@ The project is divided into several core modules:
                     │                         │
                     │  Device Test            │
                     │  Acquisition Test       │
-                    │  Recovery Test           │
-                    │  Sanitizer CLI            │
-                    │  Sanitizer GUI            │
+                    │  Recovery Test          │
+                    │  Sanitizer CLI          │
+                    │  Sanitizer GUI          │
                     └────────────┬────────────┘
                                  │
                                  ▼
