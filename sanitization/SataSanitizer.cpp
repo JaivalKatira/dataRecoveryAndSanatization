@@ -940,40 +940,84 @@ std::cout
 
 
 // --------------------------------------------------------
-// DRY RUN
+// EXECUTE
 // --------------------------------------------------------
 
 /*
- * IMPORTANT:
+ * Command/status handling, sense/error decoding, and
+ * completion polling are implemented above. Dispatching
+ * the real SANITIZE DEVICE command now.
  *
- * The command is intentionally NOT sent.
- *
- * ATA SANITIZE DEVICE is destructive.
- * We will only enable execution after:
- *
- * 1. Command/status handling is validated.
- * 2. Sense/error decoding is implemented.
- * 3. Completion polling is implemented.
- * 4. Testing is performed on a disposable drive.
+ * WARNING: This is destructive and irreversible on the
+ * target device. Only ever run this against a disposable
+ * test drive.
  */
 
 std::cout
-<<"\n[DRY RUN]\n";
+<<"\nDispatching SANITIZE DEVICE command...\n";
+
+AtaCommandResult result=executeAtaPassthrough(
+fd,
+cdb.data(),
+static_cast<uint8_t>(cdb.size()),
+nullptr,
+0,
+SG_DXFER_NONE,
+30000
+);
+
+if(!result.success){
+std::cerr
+<<"SANITIZE DEVICE command submission failed.\n";
+
+close(fd);
+return false;
+}
 
 std::cout
-<<"Command constructed successfully.\n";
+<<"Command accepted by device. Polling completion status...\n";
 
-std::cout
-<<"No destructive ATA command was sent.\n";
+bool completed=false;
+
+while(true){
+AtaSanitizeStatus status{};
+
+if(!getSanitizeStatus(fd,status)){
+std::cerr<<"Failed to read SANITIZE STATUS EXT during polling.\n";
+close(fd);
+return false;
+}
+
+printSanitizeStatus(status);
+
+if(status.failed){
+std::cerr<<"Sanitize operation failed on device.\n";
+close(fd);
+return false;
+}
+
+if(status.completedSuccessfully&&!status.operationInProgress){
+completed=true;
+break;
+}
+
+if(!status.operationInProgress&&!status.completedSuccessfully){
+// Nothing in progress and not marked complete - avoid spinning forever.
+break;
+}
+
+usleep(500000); // 500ms between polls
+}
 
 close(fd);
 
-/*
- * Returning false is intentional.
- *
- * A dry-run means no sanitization actually occurred.
- */
-return false;
+if(completed){
+std::cout<<"Sanitize completed successfully.\n";
+}else{
+std::cerr<<"Sanitize did not report successful completion.\n";
+}
+
+return completed;
 }
 
 }

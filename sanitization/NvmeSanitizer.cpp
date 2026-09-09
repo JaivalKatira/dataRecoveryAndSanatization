@@ -186,7 +186,7 @@ namespace core::sanitization {
         // (Execution disabled as requested. Ready for Dry Run verification)
         std::cout << "  -> [DRY RUN] Command constructed. Opcode: 0x" << std::hex << (int)cmd.opcode << std::dec << "\n";
         
-        /*
+        
         std::cout << "  -> Dispatching wipe command to drive...\n";
         if (ioctl(fd, NVME_IOCTL_ADMIN_CMD, &cmd) != 0) {
             std::cerr << "  -> Command submission failed via ioctl.\n";
@@ -204,8 +204,7 @@ namespace core::sanitization {
         
         close(fd);
         return success;
-        */
-
+        
         close(fd);
         return true; 
     }
