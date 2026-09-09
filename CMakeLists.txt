@@ -101,4 +101,4 @@ target_include_directories(cpp_sanitizer
 set_target_properties(cpp_sanitizer PROPERTIES
     LIBRARY_OUTPUT_DIRECTORY
     ${CMAKE_SOURCE_DIR}/UI
-)s
+)
