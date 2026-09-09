@@ -76,3 +76,29 @@ if(FLTK_FOUND)
 else()
     message(STATUS "FLTK not found - skipping sanitizer-ui target (install libfltk1.3-dev / fltk to build it)")
 endif()
+
+# ------------------------------------------------------------
+# Python C++ Sanitizer Module
+# ------------------------------------------------------------
+
+find_package(Python COMPONENTS Interpreter Development REQUIRED)
+find_package(pybind11 CONFIG REQUIRED)
+
+pybind11_add_module(cpp_sanitizer
+    UI/sanitizer_ui.cpp
+)
+
+target_link_libraries(cpp_sanitizer
+    PRIVATE
+    sih_core
+)
+
+target_include_directories(cpp_sanitizer
+    PRIVATE
+    ${CMAKE_SOURCE_DIR}
+)
+
+set_target_properties(cpp_sanitizer PROPERTIES
+    LIBRARY_OUTPUT_DIRECTORY
+    ${CMAKE_SOURCE_DIR}/UI
+)s

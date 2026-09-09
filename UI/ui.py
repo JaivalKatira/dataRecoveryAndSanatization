@@ -124,6 +124,7 @@ class WindowsXPExplorer(tk.Tk):
         self.file_table.insert("", "end", values=("classified_log.txt", "1024 B", "🔒 Ready for Wiping"))
  
         self.file_table.pack(fill="both", expand=True)
+        self.file_table.bind("<ButtonRelease-1>", self._on_table_click)
  
         # 3. Action Buttons (Both Features Preserved)
 
@@ -193,6 +194,14 @@ class WindowsXPExplorer(tk.Tk):
 
         self.append_log(f"Selected all {len(children)} items.")
  
+    def _on_table_click(self, event):
+        row = self.file_table.identify_row(event.y)
+        if row:
+            self.file_table.selection_set(row)
+            values = self.file_table.item(row, "values")
+            if values:
+                self.append_log(f"[SELECTED] {values[0]}")
+
     def append_log(self, text):
 
         self.console.insert("end", f"> {text}\n")
