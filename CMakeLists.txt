@@ -13,6 +13,26 @@ include_directories(${CMAKE_SOURCE_DIR} ${CMAKE_SOURCE_DIR}/device)
 # HashEngine (acquisition module) uses OpenSSL's EVP API for SHA-256
 find_package(OpenSSL REQUIRED)
 
+# Sleuth Kit (libtsk) — used throughout recovery/ for image I/O
+find_library(TSK_LIBRARY NAMES tsk)
+if(NOT TSK_LIBRARY)
+    message(FATAL_ERROR
+        "libtsk not found. Confirm libtsk-dev is installed "
+        "(expected e.g. /usr/lib/x86_64-linux-gnu/libtsk.so).")
+endif()
+
+find_path(TSK_INCLUDE_DIR NAMES tsk/libtsk.h)
+
+add_library(tsk::tsk UNKNOWN IMPORTED)
+set_target_properties(tsk::tsk PROPERTIES
+    IMPORTED_LOCATION "${TSK_LIBRARY}"
+)
+if(TSK_INCLUDE_DIR)
+    set_target_properties(tsk::tsk PROPERTIES
+        INTERFACE_INCLUDE_DIRECTORIES "${TSK_INCLUDE_DIR}"
+    )
+endif()
+
 # Collect all core source files
 set(CORE_SOURCES
     device/DriveManager.cpp
@@ -34,21 +54,17 @@ set(CORE_SOURCES
 # Create the core static library
 add_library(sih_core STATIC ${CORE_SOURCES})
 
-# sih_core now needs OpenSSL for HashEngine
+# sih_core needs OpenSSL for HashEngine and TSK for recovery modules
 target_link_libraries(sih_core PRIVATE OpenSSL::Crypto)
+target_link_libraries(sih_core PUBLIC tsk::tsk)
 
 # Build the device test application
 add_executable(device-test apps/device-test/main.cpp)
-
-# Link the test app against the core library and pthread (often required for system calls)
 target_link_libraries(device-test PRIVATE sih_core pthread)
 
 # Build the hash engine test application
-# NOTE: apps/hashengine-test/main.cpp does not exist in this checkout, so
-# this target is disabled to keep `make` from failing on the whole project.
-# Re-enable once that file is added back.
-# add_executable(hashengine-test apps/hashengine-test/main.cpp)
-# target_link_libraries(hashengine-test PRIVATE sih_core pthread)
+add_executable(hashengine-test apps/hashengine-test/main.cpp)
+target_link_libraries(hashengine-test PRIVATE sih_core pthread)
 
 # Build the acquisition test application (write-protect -> image -> hash)
 add_executable(acquisition-test apps/acquisition-test/main.cpp)
@@ -62,12 +78,7 @@ target_link_libraries(sanitizer PRIVATE sih_core pthread)
 add_executable(recovery-test apps/recovery-test/main.cpp)
 target_link_libraries(recovery-test PRIVATE sih_core pthread)
 
-# Sanitizer UI (drive picker -> sanitize selected/all -> confirm -> log).
-# Uses FLTK for a small footprint that's easy to ship inside the live-OS
-# rootfs. Guarded: if FLTK isn't installed yet, the rest of the project
-# still configures and builds.
-#   Debian/Ubuntu: sudo apt install libfltk1.3-dev
-#   Arch:          sudo pacman -S fltk
+# Sanitizer UI (drive picker -> sanitize selected/all -> confirm -> log)
 find_package(FLTK)
 if(FLTK_FOUND)
     add_executable(sanitizer-ui apps/sanitizer-ui/main.cpp)
